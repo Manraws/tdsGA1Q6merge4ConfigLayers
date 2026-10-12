@@ -60,13 +60,16 @@ def load_config():
         key = normalize_key(key)
         if key in config:
             config[key] = convert_value(key, value)
-    # OS environment variables override .env and YAML
+            
     for key, value in os.environ.items():
         if not key.startswith("APP_"):
             continue    
-        normalized = normalize_key(key)
+        normalized = key[4:].lower()    
+        if normalized == "num_workers":
+            normalized = "workers"
         if normalized in config:
             config[normalized] = convert_value(normalized, value)
+         
             
     return config
 
