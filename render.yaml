@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: effective-config-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /effective-config
