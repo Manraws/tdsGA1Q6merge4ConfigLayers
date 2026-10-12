@@ -1,10 +1,9 @@
 import os
 from pathlib import Path
-from typing import List
-
+from typing import List 
 import yaml
 from dotenv import dotenv_values
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Effective Configuration API")
