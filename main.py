@@ -80,25 +80,24 @@ def read_os_layer():
             result[key] = value
     return result
 
-
 @app.get("/effective-config")
-def effective_config(set: List[str] = Query(default=[])):
-    merged = dict(DEFAULTS)
+def effective_config(request: Request):
+    config = load_config()
 
-    for layer in (read_yaml_layer(), read_dotenv_layer(), read_os_layer()):
-        for key, value in layer.items():
-            if key in KNOWN_KEYS:
-                merged[key] = value
-
-    # Apply each ?set=key=value in order; later entries win.
-    for item in set:
+    for item in request.query_params.getlist("set"):
         if "=" not in item:
             continue
-        raw_key, value = item.split("=", 1)
-        key = normalize_key(raw_key)
-        if key in KNOWN_KEYS:
-            merged[key] = value
 
-    output = {key: coerce(key, value) for key, value in merged.items()}
-    output["api_key"] = "****"
-    return output
+        key, value = item.split("=", 1)
+        if key not in config or key == "api_key":
+            continue
+
+        if key in ("port", "workers"):
+            config[key] = int(value)
+        elif key == "debug":
+            config[key] = value.lower() in ("true", "1", "yes", "on")
+        else:
+            config[key] = value
+
+    config["api_key"] = "****"
+    return config 
