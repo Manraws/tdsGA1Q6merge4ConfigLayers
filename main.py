@@ -84,4 +84,4 @@ def effective_config(request: Request):
 
     config["api_key"] = "****"
     return config
-```
+
