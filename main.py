@@ -1,83 +1,74 @@
 import os
 from pathlib import Path
-from typing import List 
+
 import yaml
 from dotenv import dotenv_values
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Effective Configuration API")
+app = FastAPI()
 
-# The grader's browser can call this API cross-origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 DEFAULTS = {
     "port": 8000,
-    "workers": 1,
+    "workers": 3,
     "debug": False,
     "log_level": "info",
-    "api_key": "default-secret-000",
+    "api_key": "",
 }
-KNOWN_KEYS = set(DEFAULTS)
-TRUE_VALUES = {"true", "1", "yes", "on"}
 
+def convert_value(key, value):
+    if key in ("port", "workers"):
+        return int(value)
+    if key == "debug":
+        return str(value).lower() in ("true", "1", "yes", "on")
+    return value
 
-def normalize_key(key: str) -> str:
-    key = key.strip().lower()
+def normalize_key(key):
+    key = key.lower()
     if key.startswith("app_"):
         key = key[4:]
     if key == "num_workers":
         key = "workers"
     return key
 
+def load_config():
+    config = DEFAULTS.copy()
 
-def coerce(key: str, value):
-    value = str(value)
-    if key in {"port", "workers"}:
-        return int(value)
-    if key == "debug":
-        return value.strip().lower() in TRUE_VALUES
-    return value
+    env_name = os.getenv("APP_ENV", "development")
+    yaml_path = Path(f"config.{env_name}.yaml")
 
+    if yaml_path.exists():
+        with yaml_path.open() as f:
+            yaml_config = yaml.safe_load(f) or {}
+        for key, value in yaml_config.items():
+            key = normalize_key(key)
+            if key in config:
+                config[key] = convert_value(key, value)
 
-def read_yaml_layer():
-    env_name = os.getenv("APP_ENV", os.getenv("ENV", "development"))
-    path = Path(f"config.{env_name}.yaml")
-    if not path.exists():
-        return {}
-    with path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    return {normalize_key(k): v for k, v in data.items()}
-
-
-def read_dotenv_layer():
-    # dotenv_values reads .env without mutating the process environment.
-    values = dotenv_values(".env")
-    result = {}
-    for raw_key, value in values.items():
+    dotenv_config = dotenv_values(".env")
+    for key, value in dotenv_config.items():
         if value is None:
             continue
-        key = normalize_key(raw_key)
-        if key in KNOWN_KEYS:
-            result[key] = value
-    return result
+        key = normalize_key(key)
+        if key in config:
+            config[key] = convert_value(key, value)
 
-
-def read_os_layer():
-    result = {}
-    for raw_key, value in os.environ.items():
-        if not raw_key.startswith("APP_"):
+    for key, value in os.environ.items():
+        if not key.startswith("APP_"):
             continue
-        key = normalize_key(raw_key)
-        if key in KNOWN_KEYS:
-            result[key] = value
-    return result
+        normalized = normalize_key(key)
+        if normalized in config:
+            config[normalized] = convert_value(normalized, value)
+
+    return config
 
 @app.get("/effective-config")
 def effective_config(request: Request):
@@ -86,17 +77,11 @@ def effective_config(request: Request):
     for item in request.query_params.getlist("set"):
         if "=" not in item:
             continue
-
         key, value = item.split("=", 1)
-        if key not in config or key == "api_key":
-            continue
-
-        if key in ("port", "workers"):
-            config[key] = int(value)
-        elif key == "debug":
-            config[key] = value.lower() in ("true", "1", "yes", "on")
-        else:
-            config[key] = value
+        key = normalize_key(key.strip())
+        if key in config and key != "api_key":
+            config[key] = convert_value(key, value)
 
     config["api_key"] = "****"
-    return config 
+    return config
+```
